@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,16 +17,26 @@ func main() {
 	}
 
 	caCertPool := x509.NewCertPool()
-	caCert, err := ioutil.ReadFile("certs/root.pem")
+	caCert, err := ioutil.ReadFile("certs/service.crt")
 	if err != nil {
 		log.Fatal(err)
 	}
-	caCertPool.AppendCertsFromPEM(caCert)
+
+	pemBlock, _ := pem.Decode(caCert)
+	clientCert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	clientCert.BasicConstraintsValid = true
+	clientCert.IsCA = true
+	clientCert.KeyUsage = x509.KeyUsageCertSign
+
+	caCertPool.AddCert(clientCert)
 
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				RootCAs:            caCertPool,
+				// RootCAs:            caCertPool,
 				Certificates:       []tls.Certificate{cert},
 				InsecureSkipVerify: true,
 			},

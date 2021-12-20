@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -64,11 +65,20 @@ func runService1() {
 
 	// Create a CA certificate pool and add cert.pem to it
 	caCertPool := x509.NewCertPool()
-	caCert, err := ioutil.ReadFile("certs/root.pem")
+	caCert, err := ioutil.ReadFile("certs/client.crt")
 	if err != nil {
 		log.Fatal(err)
 	}
-	caCertPool.AppendCertsFromPEM(caCert)
+	pemBlock, _ := pem.Decode(caCert)
+	clientCert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	clientCert.BasicConstraintsValid = true
+	clientCert.IsCA = true
+	clientCert.KeyUsage = x509.KeyUsageCertSign
+
+	caCertPool.AddCert(clientCert)
 
 	// handler setup
 	muxTLS := http.NewServeMux()
@@ -87,7 +97,7 @@ func runService1() {
 		Handler:   muxTLS,
 	}
 
-	log.Fatal(server.ListenAndServeTLS("certs/service1.com.crt", "certs/service1.com.key"))
+	log.Fatalf("service1: %v", server.ListenAndServeTLS("certs/service1.com.crt", "certs/service1.com.key"))
 	wg.Done()
 }
 
@@ -96,11 +106,20 @@ func runService2() {
 	muxTLS.HandleFunc("/hello", helloTLSHandler)
 
 	caCertPool := x509.NewCertPool()
-	caCert, err := ioutil.ReadFile("certs/root.pem")
+	caCert, err := ioutil.ReadFile("certs/service.crt")
 	if err != nil {
 		log.Fatal(err)
 	}
-	caCertPool.AppendCertsFromPEM(caCert)
+	pemBlock, _ := pem.Decode(caCert)
+	clientCert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	clientCert.BasicConstraintsValid = true
+	clientCert.IsCA = true
+	clientCert.KeyUsage = x509.KeyUsageCertSign
+
+	caCertPool.AddCert(clientCert)
 
 	tlsConfig := &tls.Config{
 		ClientCAs:          caCertPool,
@@ -115,6 +134,6 @@ func runService2() {
 		Handler:   muxTLS,
 	}
 
-	log.Fatal(server.ListenAndServeTLS("certs/service2.com.crt", "certs/service2.com.key"))
+	log.Fatalf("service2: %v", server.ListenAndServeTLS("certs/service2.com.crt", "certs/service2.com.key"))
 	wg.Done()
 }
